@@ -34,13 +34,31 @@ def verify_passwords_part_one(policies, passwords):
 
 
 def verify_passwords_part_two(policies, passwords):
-    raise Exception
+    """Count the passwords that comply with the policy of part two."""
+    correct = 0
+    for policy, password in zip(policies, passwords):
+        position_1 = policy["min"] - 1
+        position_2 = policy["max"] - 1
+        letter = policy["letter"]
+
+        if (password[position_1] == letter and password[position_2] != letter) or (
+            password[position_1] != letter and password[position_2] == letter
+        ):
+            correct += 1
+    return correct
 
 
 def solve_part_one(puzzle_input):
     """Solve Part One."""
     policies, passwords = parse_input(puzzle_input)
     number_of_correct_passwords = verify_passwords_part_one(policies, passwords)
+    return number_of_correct_passwords
+
+
+def solve_part_two(puzzle_input):
+    """Solve Part Two."""
+    policies, passwords = parse_input(puzzle_input)
+    number_of_correct_passwords = verify_passwords_part_two(policies, passwords)
     return number_of_correct_passwords
 
 
@@ -53,7 +71,7 @@ def read_input(filename):
 if __name__ == "__main__":
     example = ["1-3 a: abcde", "1-3 b: cdefg", "2-9 c: ccccccccc"]
     puzzle_input = read_input("day2.txt")
-    do_solve_part_one = True
+    do_solve_part_one = False
 
     if do_solve_part_one:
         assert (
@@ -63,4 +81,14 @@ if __name__ == "__main__":
         solution_part_one = solve_part_one(puzzle_input)
         print(
             f"Of all passwords {solution_part_one} passwords are correct according to their policy."
+        )
+
+    else:
+        assert (
+            solve_part_two(example) == 1
+        ), "There is an error in your algorithm for part two."
+
+        solution_part_two = solve_part_two(puzzle_input)
+        print(
+            f"Of all passwords {solution_part_two} passwords are correct according to their policy."
         )
