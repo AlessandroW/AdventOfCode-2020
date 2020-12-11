@@ -9,3 +9,6 @@ build
 htmlcov
 
 *.txt
+
+**/env/
+**/.ipynb_checkpoints/
