@@ -1,0 +1,190 @@
+#+TITLE: Advent Of Code - Day 4
+
+First of all we need to read the input file.
+#+BEGIN_SRC elisp :session session  :results silent
+(defun get-string-from-file (filePath)
+  "Return FILEPATH's file content.
+
+thanks to “Pascal J Bourguignon” and “TheFlyingDutchman 〔zzbba…@aol.com〕”. 2010-09-02"
+  (with-temp-buffer
+    (insert-file-contents filePath)
+    (buffer-string)))
+#+END_SRC
+
+Now, we can read the text file.
+#+BEGIN_SRC elisp :session session :results silent
+(setq input (get-string-from-file "./day4.txt"))
+#+END_SRC
+
+We need to check if all required fields are included.
+In other words, we need to compare two lists.
+List one is:
+#+BEGIN_SRC elisp :session session :results silent
+(setq all '("ecl" "pid" "eyr" "hcl" "byr" "iyr" "hgt"))
+#+END_SRC
+
+And list two consists of the fields in a passport.
+That means we want the part of the string before the colon.
+We can use =string-match= and a regex group for that.
+
+Because we want /all/ fields and not just the first one we need to loop
+over the input and update the regex-start value.
+Using =match-string= and =match-end= we can get the value of the group and the
+position of the end.
+
+In code:
+#+BEGIN_SRC elisp :session session :results silent
+(defun extract-fields-from-string (string)
+  "Extract all regex mataches from STRING
+
+Taken from https://emacs.stackexchange.com/a/7150"
+  (let ((start 0) matches)
+    (while (string-match "\\(\\w+\\):" string start)  ; Regex from https://www.emacswiki.org/emacs/RegularExpression
+      (push (match-string 1 string) matches)
+      (setq start (match-end 0)))
+    matches))
+#+END_SRC
+
+The passports are separated by two new line characters.
+So, we can use =split-string= combined with =car= to fetch the first passport.
+#+BEGIN_SRC elisp :session session
+(let ((passport (car (split-string input "\n\n"))))
+  (extract-fields-from-string passport))
+#+END_SRC
+
+#+RESULTS:
+| eyr | hcl | iyr | hgt | byr | pid |
+
+Are all required fields in the result?
+Let us write a function to check that.
+
+In [[https://github.com/sophiebits/adventofcode/edit/main/2020/day04.py][the Python sample solution]] the author checked if after subtracting the result from all any fields are left.
+If that is the case then not every field was in the result.
+We can do the same with =seq-difference=.
+#+BEGIN_SRC elisp :session session
+(require 'seq)
+
+(defun is-valid-passport (passport)
+  "Check if all fields are in PASSPORT."
+  (seq-difference all (extract-field-from-string passport)))
+
+(is-valid-passport (car (split-string input "\n\n")))
+#+END_SRC
+
+#+RESULTS:
+| ecl |
+
+The first passport is not valid! The field =ecl= is missing.
+
+I want to =filter= the list, so that only the valid passports remain and we can count them.
+This means that a valid passport should return true not =nil=.
+So:
+#+BEGIN_SRC elisp :session session
+(defun is-valid-passport (passport)
+  "Check if all fields are in PASSPORT."
+  (not (seq-difference all (extract-field-from-string passport))))
+
+(is-valid-passport (car (split-string input "\n\n")))
+#+END_SRC
+
+#+RESULTS:
+Now, the invalid passport returns ='nil=.
+
+We have solved the problem for /one/ passport, let's wrap it up and do it for all passports.
+#+BEGIN_SRC elisp :session session
+(length (seq-filter #'is-valid-passport (split-string input "\n\n")))
+#+END_SRC
+
+#+RESULTS:
+: 228
+
+** Part Two
+
+In part two we not only need to check if the fields are included but we also need to check the content.
+This sounds like we need to do a lot of parsing..
+
+Our first task is to extract the fields and their content.
+For the fields we used:
+#+BEGIN_SRC elisp :session session
+(setq example-passport (car (split-string input "\n\n")))
+(seq-map #'extract-field-from-string (list example-passport))
+#+END_SRC
+
+#+RESULTS:
+| eyr | hcl | iyr | hgt | byr | pid |
+
+For the passport
+#+BEGIN_SRC elisp :session session
+example-passport
+#+END_SRC
+
+#+RESULTS:
+: pid:827837505 byr:1976
+: hgt:187cm
+: iyr:2016
+: hcl:#fffffd
+: eyr:2024
+
+In order to get the content we need to extend our initial regex and add a second group:
+#+BEGIN_SRC elisp :session session
+(defun extract-fields-and-contents-from-string (string)
+  "Extract all regex mataches from STRING
+
+Taken from https://emacs.stackexchange.com/a/7150"
+  (let ((start 0) fields)
+    (while (string-match "\\(\\w+\\):\\([^ \n]+\\)" string start)  ; Regex from https://www.emacswiki.org/emacs/RegularExpression
+      (push (list (match-string 1 string) (match-string 2 string)) fields)
+      (setq start (match-end 0)))
+    fields))
+
+(setq parsed-passport (seq-map #'extract-fields-and-contents-from-string (list example-passport)))
+#+END_SRC
+
+#+RESULTS:
+| (eyr 2024) | (hcl #fffffd) | (iyr 2016) | (hgt 187cm) | (byr 1976) | (pid 827837505) |
+
+Next, we need to check each field and content.
+
+I discovered the [[https://www.emacswiki.org/emacs/ElispCookbook][ElispCookbook]] that helped a lot for the following string checking (e.g. =string-suffix-p=).
+#+BEGIN_SRC elisp :session session
+(defun is-content-of-field-valid (list)
+  (let ((field (car list))
+        (content (car (cdr list))))
+    (cond ((string= field "byr")
+           (let ((year (string-to-number content)))
+             (and (<= 1920 year)
+                  (<= year 2002))))
+          ((string= field "iyr")
+           (let ((year (string-to-number content)))
+             (and (<= 2010 year)
+                  (<= year 2020))))
+          ((string= field "eyr")
+           (let ((year (string-to-number content)))
+             (and (<= 2020 year)
+                  (<= year 2030))))
+          ((string= field "hgt")
+           (let ((height (string-to-number (substring content 0 -2))))
+             (cond ((string-suffix-p "cm" content)
+                    (and (<= 150 height)
+                         (<= height 193)))
+                   ((string-suffix-p "in" content)
+                    (and (<= 59 height)
+                         (<= height 76))))))
+          ((string= field "hcl")
+           )
+          (t "default"))
+  ))
+
+ (assert (is-content-of-field-valid '("byr" "1921")))
+ (assert (not (is-content-of-field-valid '("byr" "1919"))))
+ (assert (not (is-content-of-field-valid '("byr" "2100"))))
+
+ (assert (is-content-of-field-valid '("hgt" "150cm")))
+ (assert (is-content-of-field-valid '("hgt" "59in")))
+ (assert (not (is-content-of-field-valid '("hgt" "50in"))))
+
+#+END_SRC
+
+#+RESULTS:
+    (string-match (regexp-quote "#v[:alnum:]\{6\}") "#fffff0")
+(string-match "[:alnum:]\{6\}" "aaaaaa")
