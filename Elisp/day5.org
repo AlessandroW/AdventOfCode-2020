@@ -1,0 +1,116 @@
+#+TITLE: Advent Of Code 2020 in Emacs Lisp - Day 5
+
+After the extremely long day 4 task I'm glad that the [[https://github.com/sophiebits/adventofcode/blob/main/2020/day05.py][Python solution]] for day 5 is quite short.
+If you want to read the description of the task visit [[https://adventofcode.com/2020/day/5][the AoC homepage]].
+
+* Part One
+In our list of boarding passes we need to find the highest seat ID.
+This means we
+- need to find the seat for a given boarding pass and
+- calculate the seat id
+for each boarding pass.
+
+For the remainder let us use this example =boarding-pass=.
+#+BEGIN_SRC elisp :session session :results silent
+(setq boarding-pass "BFFFBBFRRR")
+#+END_SRC
+The seat ID is =row * 8 + column=.
+
+[[https://github.com/sophiebits][Sophiebits]] uses a neat trick in her solution: calculate the seat ID in base 2 (in Python =int (<number>, 2)=.
+Therefore, to calculate the seat ID we only need to replace =F= and =L= with 0 and =B= and =R= with 1
+#+BEGIN_SRC elisp :session session
+(defun binarize-boarding-pass (boarding-pass)
+  (replace-regexp-in-string "[BR]" "1"
+                            (replace-regexp-in-string "[FL]" "0" boarding-pass)))
+
+(setq binary-boarding-pass(binarize-boarding-pass boarding-pass))
+#+END_SRC
+
+For our example =boarding-pass= this would be:
+#+RESULTS:
+: 1000110111
+
+Like in Python =string-to-number= accepts a base.
+Hence we only need to call this function:
+#+BEGIN_SRC elisp :session session
+(string-to-number binary-boarding-pass 2)
+#+END_SRC
+
+#+RESULTS:
+: 567
+
+Why is this correct?
+We know that the last three characters are the columns.
+- =LLL= would be the first column or 0 (zero-indexed)
+  This is equivalent to =000= in binary.
+- =LLR= is the second column, 1, or in binary =001=.
+- =RRR= is column 7 or =111= in binary.
+
+Okay, so now we understand why we can convert the columns to binary.
+But why is =row * 8 + column= equal to =binary-boarding-pass=?
+First, note that =1000= is 8 in binary.
+Incidentally, the same number is in our formula.
+
+So if we have the first row, 0, this would be =LL...L= or =00...0=.
+The ID of seat 3 in row one is therefore =(to-base-10 00...0) * 8 + (to-base-10 011) = 0 * 8 + 3 = 3=.
+For seat 3 in row two it is =(to-base-10 00...1) * 8 + (to-base-10 011) = 1 * 8 + 3 = 11=.
+The trick is: 11 in binary is =00..1011= so =(to-base-10 row-in-base-2column-in-base-2)=.
+
+The only thing left to do in part one is to find the maximum.
+#+BEGIN_SRC elisp :session session
+(require 'seq)
+
+(defun get-seat-ids (boarding-passes)
+  (seq-map (lambda (boarding-pass)
+                  (string-to-number (binarize-boarding-pass boarding-pass)
+                                    2))
+           boarding-passes))
+
+(defun get-maximum-seat-id (boarding-passes)
+  (seq-max (get-seat-ids boarding-passes)))
+
+(get-maximum-seat-id '("BFFFBBFRRR" "FFFBBBFRRR" "BBFFBBFRLL"))
+#+END_SRC
+
+Let's compare it with the three example boarding passes:
+#+RESULTS:
+: 820
+Works!
+
+Instead of always downloading the puzzle input and then loading the file we can use =with-current-buffer= and =buffer-string= to extract the content of a buffer we pasted the input into (see [[https://emacs.stackexchange.com/questions/696/get-content-of-a-buffer][this emacs.stackexchange]] post)
+#+BEGIN_SRC elisp :session session
+(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string))))
+
+(get-maximum-seat-id puzzle-input)
+#+END_SRC
+
+#+RESULTS:
+: 883
+
+* Part Two
+
+Because we lost our boarding pass we conclude that the only missing boarding pass is ours.
+The only catch is that the first and last seats are not available.
+We conclude that our seat is the only one with a taken seat left and right of it.
+
+The brute-force approach:
+- add all taken seats to a list
+- if the middle seat of three seats is free --- sit down!.
+
+In order to exit the loop we use =catch= and =throw=.
+The Emacs Lisp equivalent of Python's =range= is =number-of-sequence=.
+ #+BEGIN_SRC elisp :session session
+(setq taken-seats (get-seat-ids puzzle-input))
+
+(catch 'loop
+  (dolist (seat (number-sequence 0 (* 256 8)))
+    (when (and (not (member seat taken-seats))
+               (member (+ seat 1) taken-seats)
+               (member (- seat 1) taken-seats))
+      (throw 'loop seat))))
+ #+END_SRC
+
+ #+RESULTS:
+ : 532
+
+We found our seat! Hopefully the flight is calm..
