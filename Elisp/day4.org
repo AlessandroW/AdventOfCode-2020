@@ -26,6 +26,7 @@ List one is:
 And list two consists of the fields in a passport.
 That means we want the part of the string before the colon.
 We can use =string-match= and a regex group for that.
+For this regex task the [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Simple-Match-Data.html][Simple Match Data Access]] page in the Emacs manual gives a good introduction.
 
 Because we want /all/ fields and not just the first one we need to loop
 over the input and update the regex-start value.
@@ -140,9 +141,6 @@ Taken from https://emacs.stackexchange.com/a/7150"
 (setq parsed-passport (seq-map #'extract-fields-and-contents-from-string (list example-passport)))
 #+END_SRC
 
-#+RESULTS:
-| (eyr 2024) | (hcl #fffffd) | (iyr 2016) | (hgt 187cm) | (byr 1976) | (pid 827837505) |
-
 Next, we need to check each field and content.
 
 I discovered the [[https://www.emacswiki.org/emacs/ElispCookbook][ElispCookbook]] that helped a lot for the following string checking (e.g. =string-suffix-p=).
@@ -171,8 +169,13 @@ I discovered the [[https://www.emacswiki.org/emacs/ElispCookbook][ElispCookbook]
                     (and (<= 59 height)
                          (<= height 76))))))
           ((string= field "hcl")
-           )
-          (t "default"))
+           (string-match "#[0-9a-f]\\{6\\}" content))
+          ((string= field "ecl")
+           (member content (split-string "amb blu brn gry grn hzl oth")))
+          ((string= field "pid")
+           (string-match "[0-9]\\{9\\}" content))
+          ((string= field "cid") 't)
+          (t 'nil))
   ))
 
  (assert (is-content-of-field-valid '("byr" "1921")))
@@ -183,8 +186,46 @@ I discovered the [[https://www.emacswiki.org/emacs/ElispCookbook][ElispCookbook]
  (assert (is-content-of-field-valid '("hgt" "59in")))
  (assert (not (is-content-of-field-valid '("hgt" "50in"))))
 
+ (assert (is-content-of-field-valid '("hcl" "#fff000")))
+ (assert (not (is-content-of-field-valid '("hcl" "#zzzzzz"))))
+
+ (assert (is-content-of-field-valid '("ecl" "amb")))
+ (assert (not (is-content-of-field-valid '("ecl" "zzz"))))
+
+ (assert (is-content-of-field-valid '("cid" "")))
+ (assert (not (is-content-of-field-valid '("random" ""))))
+
+#+END_SRC
+
+Wow, that was a tedious task.
+Fortunately we had a sample solution and could use the unit tests.
+
+Let's recap:
+For each field we need to check the content.
+The =is-content-of-field-valid= function does exactly that, given a =(field content)= list.
+So, now we only need to check all fields of a passport and count all valid passports.
+
+#+BEGIN_SRC elisp :session session
+(defun check-passport-content (string)
+  (not (memq nil (seq-map #'is-content-of-field-valid (extract-fields-and-contents-from-string string)))))
+
+(check-passport-content example-passport)
 #+END_SRC
 
 #+RESULTS:
-    (string-match (regexp-quote "#v[:alnum:]\{6\}") "#fffff0")
-(string-match "[:alnum:]\{6\}" "aaaaaa")
+: t
+In [[https://emacs.stackexchange.com/questions/19018/what-emacs-lisp-boolean-logical-convenience-functions-exist][this]] emacs.stackexchange post I discovered that you can use =(not (memq nil list))= to check if all elements of a list are true/non-nil. This seems to be equivalent to Python's =all()=.
+
+
+Now that we can verify if the content is correct and if all fields are included, we only need to combine both functions and count all valid passports.
+#+BEGIN_SRC elisp :session session
+(length
+ (seq-filter (lambda (passport) (and (is-valid-passport passport)
+                                (check-passport-content passport)))
+             (split-string input "\n\n")))
+#+END_SRC
+
+#+RESULTS:
+: 176
+
+The correct solution is =175=. If you spot the bug, I'd love to hear it!
