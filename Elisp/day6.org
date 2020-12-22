@@ -1,0 +1,88 @@
+#+TITLE: Advent of Code 2020 in Emacs Lisp - Day 6
+
+In [[https://adventofcode.com/2020/day/6][day 6 of the Advent of Code]] we need to check the answers of /customs declaration forms/.
+Fortunately, [[https://github.com/sophiebits/adventofcode/blob/main/2020/day06.py][Sophiebits]] could solve part one _and_ two in just 17 lines of Python code.
+Let's convert it to Emacs Lisp!
+
+* Part One
+Our input is a list of customs declaration forms.
+A form is a paragraph (separated by =\n\n=) of lines of subsets of the alphabet.
+In other words:
+#+BEGIN_QUOTE
+abcx
+abcy
+abcz
+#+END_QUOTE
+This is a form.
+It contains the questions the three persons in the group answered with "yes".
+For part one we need to count the letters in the set, i.e =(length '(a b c x y z))=.
+Then, we need to sum all counts.
+
+First of all, let's get our puzzle input:
+#+BEGIN_SRC elisp :session session
+(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string)) "\n\n"))
+(setq example-form (car puzzle-input))
+#+END_SRC
+
+#+RESULTS:
+: hxcq
+: xq
+
+To count the number of positive answers we only need to compute the intersection of the alphabet and the form,
+take the set and return the length.
+
+#+BEGIN_SRC elisp :session session
+(require 'seq)
+
+
+(defun count-answers (form)
+  (length (delete-duplicates (seq-intersection  form
+                                                "abcdefghijklmnopqrstuvwxyz"))))
+(count-answers example-form)
+#+END_SRC
+
+#+RESULTS:
+: 4
+
+Now let's do it for all (=seq-map=) forms and sum it up (=seq-reduce=):
+#+BEGIN_SRC elisp :session session
+(seq-reduce #'+ (seq-map #'count-answers puzzle-input) 0)
+#+END_SRC
+
+#+RESULTS:
+: 6911
+
+
+Done!
+Let's continue with..
+
+* Part Two
+The twist in part two is that we need to count the answers /everyone/ in a group answered with "yes" (instead of anyone).
+So starting with the complete alphabet we calculate the intersection for each line to obtain the questions all guests answered with "yes".
+Note, that when representing a string as a list of characters we only see their number, to convert them back to a string you can use =concat=.
+#+BEGIN_SRC elisp :session session
+(defun count-answers-per-guest (form)
+  (seq-reduce #'seq-intersection
+              (split-string form)
+              "abcdefghijklmnopqrstuvwxyz"))
+
+(concat (count-answers-per-guest example-form))
+#+END_SRC
+
+#+RESULTS:
+: qx
+
+Seems to work out!
+
+Now let's apply it to the complete sequence and count the characters instead of just returning them.
+#+BEGIN_SRC elisp :session session
+(seq-reduce #'+
+            (seq-map (lambda (form) (length (count-answers-per-guest form)))
+                     puzzle-input)
+            0)
+#+END_SRC
+
+#+RESULTS:
+: 3473
+
+The result is correct! Let's move on.
