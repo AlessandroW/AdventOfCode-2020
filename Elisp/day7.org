@@ -1,0 +1,317 @@
+#+TITLE: Advent of Code 2020 in Emacs Lisp - Day 7
+
+[[https://adventofcode.com/2020/day/7][Day 7]] in the Advent of Code 2020 looks like a nasty parsing exercise.
+But in this post you will learn how to use association lists (=alists=), the Elisp dictionaries.
+Fortunately, [[https://github.com/sophiebits/adventofcode/blob/main/2020/day07.py][Sophiebits' solution]] consists of only 32 Python LOC.
+Let's dive in!
+
+* Part One
+In part one we have to count how many bag colors contain at least one =shiny gold= bag.
+The solution consists of two parts:
+- a parser and
+- a recursive function.
+
+** The Parser
+In order to test our parser, let's get the example input.
+#+BEGIN_SRC elisp :session session :results silent
+(setq example-input (split-string "light red bags contain 1 bright white bag, 2 muted yellow bags.
+dark orange bags contain 3 bright white bags, 4 muted yellow bags.
+bright white bags contain 1 shiny gold bag.
+muted yellow bags contain 2 shiny gold bags, 9 faded blue bags.
+shiny gold bags contain 1 dark olive bag, 2 vibrant plum bags.
+dark olive bags contain 3 faded blue bags, 4 dotted black bags.
+vibrant plum bags contain 5 faded blue bags, 6 dotted black bags.
+faded blue bags contain no other bags.
+dotted black bags contain no other bags." "\n"))
+#+END_SRC
+
+Our parser should return two key-value data structures that return the count + inner bags and the colors in the bag.
+
+*** Python Dicts and Elip Alists
+In Python we could do this with =dicts=.
+For example:
+#+BEGIN_SRC python
+example_dict = {"pine": "cones", "oak": "acorns", "maple": "seeds"}
+return example_dict["pine"]
+#+END_SRC
+
+#+RESULTS:
+: cones
+In Emacs Lisp we will use [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Association-Lists.html][Association Lists]].
+#+BEGIN_SRC elisp :session session
+(setq example-alist '((pine . cones)
+                     (oak . acorns)
+                     (maple . seeds)))
+(assoc 'pine example-alist)
+#+END_SRC
+
+#+RESULTS:
+: (pine . cones)
+To get the same result we can use =alist-get=
+#+BEGIN_SRC elisp
+(alist-get 'pine example-alist)
+#+END_SRC
+
+#+RESULTS:
+: cones
+
+
+To add an element we can use =push=.
+
+*** Color Extraction
+In the first step we want to extract the color of the bag.
+#+BEGIN_SRC elisp :session session
+(car example-input)
+#+END_SRC
+
+#+RESULTS:
+: light red bags contain 1 bright white bag, 2 muted yellow bags.
+For example "light red" in the first example line.
+
+To do so we can extract the sub-string before =bags contain=.
+#+BEGIN_SRC elisp :session session
+(defun get-bag-color (string)
+  (when (string-match "\\(.+?\\) bags contain" string)
+    (match-string 1 string)))
+
+(get-bag-color (car example-input))
+#+END_SRC
+
+#+RESULTS:
+: light red
+
+*** Content Extraction
+Now that we know how to extract the color of the bag we need to extract the content.
+We will do this similar to the approach in day 4.
+#+BEGIN_SRC elisp :session session
+(defun get-bag-content (string)
+  (let ((start 0) matches)
+    (while (string-match "\\([0-9]+?\\) \\(.+?\\) bags?[,.]" string start)
+      (push (list (string-to-number (match-string 1 string))
+                  (match-string 2 string))
+            matches)
+      (setq start (match-end 0)))
+  matches))
+
+(get-bag-content (car example-input))
+#+end_src
+
+#+RESULTS:
+| 2 | muted yellow |
+| 1 | bright white |
+
+*** The Bag-Content Storage
+
+If you are fluent in Python adding an element to a =list= that is an element of a =dict= is easy:
+#+BEGIN_SRC python
+dictionary = {"key": ["value1"]}
+dictionary["key"].append("value2") 
+return dictionary
+#+END_SRC
+
+#+RESULTS:
+| key | : | (value1 value2) |
+
+But how do you do this in Emacs Lisp?
+You need to get the content of the value (=alist-get=) add the new value (=cons=) and update the alist (=add-to-list=).
+#+BEGIN_SRC elisp :session session
+(setq alist '(("key" . ("value1"))))
+(add-to-list 'alist (cons "key"
+                          (cons "value2"
+                                (alist-get "key" alist nil nil #'equal))))  ; Use equal to find the key.
+#+END_SRC
+
+#+RESULTS:
+| key | value2 | value1 |
+| key | value1 |        |
+
+Clearly the results differ.
+The reason is that =add-to-list= adds an element (obviously).
+However, =alist-get= returns the /first/ value with the key ="key"= and the order is not important for our case.
+So this would work.
+
+Additionally, we have to specify a function (=equal=) to compare the query key with the keys of our key-value storage. The default is symbol comparison, not string, therefore we need to do this explicitly.
+
+By leveraging =map.el= we can replace =add-to-list= with =map-put= and =alist-get= with =map-elt=.
+#+BEGIN_SRC elisp :session session
+(require 'map)
+
+(setq alist '(("key" . ("value1"))))
+(setq alist (map-put alist "key" (cons "value2"
+                                       (map-elt alist "key" nil #'equal))))
+alist
+#+END_SRC
+
+#+RESULTS:
+| key | value2 | value1 |
+| key | value1 |        |
+
+We can wrap this in a function to make the next step less complex.
+#+BEGIN_SRC elisp :session session
+(defun append-to-value (map key value)
+  (map-put map key (cons value (map-elt map key nil #'equal))))
+
+(setq alist (append-to-value alist "key" "value3"))
+(setq alist (append-to-value alist "key2" "value1"))
+alist
+#+END_SRC
+
+#+RESULTS:
+| key2 | value1 |        |        |
+| key  | value3 | value2 | value1 |
+| key  | value2 | value1 |        |
+| key  | value1 |        |        |
+
+#+BEGIN_SRC elisp :session session
+(setq blist '(("key" . ((1 "value1")))))
+(append-to-value blist "key" '(1 "value2"))
+#+END_SRC
+
+#+RESULTS:
+| key | (1 value2) | (1 value1) |
+| key | (1 value1) |            |
+
+
+For each bag we store what the bag contains and where it is contained in.
+#+BEGIN_SRC elisp :session session
+(setq contained-in 'nil)
+(setq contains 'nil)
+
+(dolist (bag example-input)
+  (let ((color (get-bag-color bag))
+        (content (get-bag-content bag)))
+    (dolist (current content)
+      ;; (print contains)
+      (let ((ct (car current))
+            (innercolor (car (cdr current))))
+        (setq contained-in
+              (append-to-value contained-in innercolor color))))
+    (setq contains
+              (append-to-value contains color content))))
+
+contained-in
+#+END_SRC
+
+#+RESULTS:
+| faded blue   | vibrant plum | dark olive   | muted yellow |
+| dotted black | vibrant plum | dark olive   |              |
+| faded blue   | dark olive   | muted yellow |              |
+| dotted black | dark olive   |              |              |
+| dark olive   | shiny gold   |              |              |
+| vibrant plum | shiny gold   |              |              |
+| shiny gold   | muted yellow | bright white |              |
+| faded blue   | muted yellow |              |              |
+| shiny gold   | bright white |              |              |
+| bright white | dark orange  | light red    |              |
+| muted yellow | dark orange  | light red    |              |
+| bright white | light red    |              |              |
+| muted yellow | light red    |              |              |
+
+#+BEGIN_SRC elisp :session session
+contains
+#+END_SRC
+
+#+RESULTS:
+| dotted black | nil                                 |
+| faded blue   | nil                                 |
+| vibrant plum | ((6 dotted black) (5 faded blue))   |
+| dark olive   | ((4 dotted black) (3 faded blue))   |
+| shiny gold   | ((2 vibrant plum) (1 dark olive))   |
+| muted yellow | ((9 faded blue) (2 shiny gold))     |
+| bright white | ((1 shiny gold))                    |
+| dark orange  | ((4 muted yellow) (3 bright white)) |
+| light red    | ((2 muted yellow) (1 bright white)) |
+
+** Counting The Bags 
+#+BEGIN_SRC elisp :session session
+(defun check (color map)
+  (let ((holdsgold (map-elt map color 'nil #'equal)))
+    (dolist (bag (map-elt map color 'nil #'equal))
+      (setq holdsgold (append (check bag map)
+                             holdsgold)))
+    (remove-duplicates holdsgold)))
+
+(setq bags-that-contain-shiny-gold (check "shiny gold" contained-in))
+bags-that-contain-shiny-gold
+#+END_SRC
+
+#+RESULTS:
+| dark orange | light red | muted yellow | bright white |
+
+By traversing all bags that contain the ="shiny gold"= bag and calling their parents recursively we can get all bags that contain the ="shiny gold"= bag.
+
+In total:
+#+BEGIN_SRC elisp :session session
+(length bags-that-contain-shiny-gold)
+#+END_SRC
+
+#+RESULTS:
+: 4
+
+Finally, let's do this for the puzzle input.
+
+#+BEGIN_SRC elisp :session session :results silent
+(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string)) "\n"))
+
+(defun parse-puzzle-input (puzzle-input)
+  (let ((contained-in) (contains))
+    (dolist (bag puzzle-input)
+      (let ((color (get-bag-color bag))
+            (content (get-bag-content bag)))
+        (dolist (current content)
+          (let ((ct (car current))
+                (innercolor (car (cdr current))))
+            (setq contained-in
+                  (append-to-value contained-in innercolor color))))
+        (setq contains
+              (append-to-value contains color content))
+            ))
+    
+  (list contained-in contains)))
+
+(defun count-super-bags (contained-in)
+  (setq bags-that-contain-shiny-gold (check "shiny gold" contained-in))
+  (length (remove-duplicates bags-that-contain-shiny-gold)))
+
+(assert (= (count-super-bags (car (parse-puzzle-input example-input)))
+           4))
+#+END_SRC
+
+
+
+#+BEGIN_SRC elisp :session session
+(let ((parser-result (parse-puzzle-input puzzle-input)))
+  (setq puzzle-contained-in (car parser-result))
+  (setq puzzle-contains (car (cdr parser-result)))
+  )
+
+(count-super-bags puzzle-contained-in)
+#+END_SRC
+
+#+RESULTS:
+: 208
+
+* Part Two
+In part two we have to count the number of bags our ="shiny gold"= bag contains.
+To do so we traverse the =contains= list and add the count (=ct=) and the count times the count of the content of the bag.
+
+#+BEGIN_SRC elisp :session session
+(defun cost (color contains)
+  (let ((total 0))
+    (dolist (bag (car (map-elt contains color 'nil #'equal)))
+      (when bag 
+          (let ((ct (car bag))
+                (inner (car (cdr bag))))
+            (setq total (+ total ct))
+            (setq total (+ total
+                           (* ct (cost inner contains)))))))
+      total))
+(cost "shiny gold" puzzle-contains)
+#+END_SRC
+
+#+RESULTS:
+: 1664
+
+And we are done!
+
+
