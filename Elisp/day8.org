@@ -98,7 +98,7 @@ accumulator
 To work on the real =puzzle-input= I pasted it into the =*scratch*= buffer and retrieved it from there.
 Additionally, I wrapped the algorithm inside a function (=solve-part-one=).
 #+BEGIN_SRC elisp :session session
-(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string)) "\n"))
+(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string)) "\n" 't))
 
 (defun solve-part-one (puzzle-input)
   (let ((seen 'nil) (program-counter 0) (accumulator 0))
@@ -162,3 +162,40 @@ To solve this puzzle we need two things:
 
 (assert (not (execute-instructions example-input))) ;; returns nil
 #+END_SRC
+
+Having a function that tests the validity of the altered code it is left to loop over all lines and test if a code change results in a working program.
+#+begin_src elisp :session session
+(defun replace-op-code (line)
+  (cond ((string-match-p "jmp" line)
+         (replace-regexp-in-string "jmp" "nop" line))
+        ((string-match-p "nop" line)
+         (replace-regexp-in-string "nop" "jmp" line))
+        (t line)))
+
+(defun fix-input (puzzle-input)
+  (let (result current-input)
+   (dotimes (i (length puzzle-input))
+     (setq current-input (copy-sequence puzzle-input))
+     (setcar (nthcdr i current-input) (replace-op-code (nth i current-input)))
+     (setq result (execute-instructions current-input))
+     (when result
+       (return result))
+    )
+   ))
+ (fix-input example-input) 
+#+end_src
+
+#+RESULTS:
+: 8
+
+The =replace-op-code= function takes care of switching the op code, if necessary.
+In the =fix-input= function we iterate over all lines and if our program executes with non-nil =execute-instructions= we return the result.
+Because changing the ith element using =setcar= and =nthcdr= will change our original input we have to create a deep copy using =copy-sequence= first.
+
+Now we only need to run the code on the puzzle input and we are done!
+#+begin_src elisp :session session
+(fix-input puzzle-input)
+#+end_src
+
+#+RESULTS:
+: 892
