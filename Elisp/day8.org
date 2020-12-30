@@ -1,0 +1,164 @@
+#+TITLE: Advent of Code 2020 in Emacs Lisp - Day 8
+
+Working with associative lists was much more cumbersome than expected I guess there is an easier way.
+Anyway, in this day's [[https://github.com/sophiebits/adventofcode/blob/main/2020/day08.py][Python solution]] there are no dicts. So let's dive in!
+
+* Day 8: Handheld Halting
+If you want to read the complete introduction: [[https://adventofcode.com/2020/day/8][here it is]].
+In summary, we have an instruction list consisting of op-codes and signed numbers.
+The op-codes are:
+- =acc=, accumulator,
+- =jmp=, jump,
+- =nop=, no operation.
+
+Here is a small example.
+#+BEGIN_SRC elisp :session session :results silent
+(setq example-input (split-string "nop +0
+acc +1
+jmp +4
+acc +3
+jmp -3
+acc -99
+acc +1
+jmp -4
+acc +6" "\n"))
+#+END_SRC
+
+** Part One
+The code contains an infinite loop and we need to find the last instruction before the loop begins.
+In other words, find the instruction before any instruction that is executed twice.
+When we find the instruction the puzzle solution will be the current value.
+
+The value is initialized with zero and changes only with the accumulator.
+After evaluating the =acc= op-code, or =nop=, the next instruction is executed.
+The =jmp= instruction jumps to the instruction relative to itself.
+
+This means we need to keep track of two things:
+- the current position (=program-counter=) and
+- the current value (=accumulator=).
+#+BEGIN_SRC elisp :session session :results silent
+(setq accumulator 0)
+(setq program-counter 0)
+#+END_SRC
+
+Furthermore, we have to check if we executed the instruction already.
+#+BEGIN_SRC elisp :session session :results silent
+(setq seen 'nil)
+#+END_SRC
+
+Before we traverse the instructions I'd like to encapsulate the instructions in separate functions:
+#+BEGIN_SRC elisp :session session
+(defun acc (accumulator program-counter data)
+  (list (+ accumulator data) (+ program-counter 1)))
+
+(defun jmp (accumulator program-counter data)
+  (list accumulator (+ program-counter data)))
+
+(defun nop (accumulator program-counter data)
+  (list accumulator (+ program-counter 1)))
+
+(defun parse-instruction (instruction-line)
+  (let ((elements (split-string instruction-line)))
+    (list (car elements) (string-to-number (car (cdr elements))))))
+
+(assert (equal (acc 0 0 5) '(5 1)))
+(assert (equal (jmp 0 0 5) '(0 5)))
+(assert (equal (nop 0 0 5) '(0 1)))
+(parse-instruction "acc -5")
+#+END_SRC
+
+#+RESULTS:
+| acc | -5 |
+
+So now that we can parse and execute the instructions we only need to find the last one before the loop.
+#+BEGIN_SRC elisp :session session
+(setq seen 'nil)
+(while (not (member program-counter seen))
+  (setq seen (add-to-list 'seen program-counter))
+  (let ((parsed-instruction (parse-instruction (nth program-counter example-input)))
+        (instruction) (data) (result))
+    (print parsed-instruction)
+    (setq instruction (car parsed-instruction))
+    (setq data (car (cdr parsed-instruction)))
+    (cond ((string= instruction "acc")
+           (setq result (acc accumulator program-counter data)))
+          ((string= instruction "jmp")
+           (setq result (jmp accumulator program-counter data)))
+          ((string= instruction "nop")
+           (setq result (nop accumulator program-counter data))))
+    (setq accumulator (car result))
+    (setq program-counter (car (cdr result)))))
+
+accumulator
+#+END_SRC
+
+#+RESULTS:
+: 5
+
+To work on the real =puzzle-input= I pasted it into the =*scratch*= buffer and retrieved it from there.
+Additionally, I wrapped the algorithm inside a function (=solve-part-one=).
+#+BEGIN_SRC elisp :session session
+(setq puzzle-input (split-string (with-current-buffer "*scratch*" (buffer-string)) "\n"))
+
+(defun solve-part-one (puzzle-input)
+  (let ((seen 'nil) (program-counter 0) (accumulator 0))
+    (while (not (member program-counter seen))
+      (setq seen (add-to-list 'seen program-counter))
+      (let ((parsed-instruction (parse-instruction (nth program-counter puzzle-input)))
+            (instruction) (data) (result))
+        (print parsed-instruction)
+        (setq instruction (car parsed-instruction))
+        (setq data (car (cdr parsed-instruction)))
+        (cond ((string= instruction "acc")
+               (setq result (acc accumulator program-counter data)))
+              ((string= instruction "jmp")
+               (setq result (jmp accumulator program-counter data)))
+              ((string= instruction "nop")
+               (setq result (nop accumulator program-counter data))))
+        (setq accumulator (car result))
+        (setq program-counter (car (cdr result)))))
+    accumulator))
+
+(solve-part-one puzzle-input)
+#+END_SRC
+
+#+RESULTS:
+: 1671
+
+That's it! Let's move to part two!
+
+** Part Two
+
+Of course, part two is the real challenge.
+We need to find the =jmp= /or/ =nop= instruction that should be =nop= /or/ =jmp= to break the infinite loop.
+The solution is then the final accumulator value.
+
+To solve this puzzle we need two things:
+- a modified =solve-part-one= that returns =nil= or the =accumulator=
+- a =solve-part-two= function that replaces the two op-codes.
+
+#+BEGIN_SRC elisp :session session
+
+(defun execute-instructions (puzzle-input)
+  (let ((seen 'nil) (program-counter 0) (accumulator 0))
+    (while (and (not (member program-counter seen))
+                (< program-counter (length puzzle-input)))
+      (setq seen (add-to-list 'seen program-counter))
+      (let ((parsed-instruction (parse-instruction (nth program-counter puzzle-input)))
+            (instruction) (data) (result))
+        (setq instruction (car parsed-instruction))
+        (setq data (car (cdr parsed-instruction)))
+        (cond ((string= instruction "acc")
+               (setq result (acc accumulator program-counter data)))
+              ((string= instruction "jmp")
+               (setq result (jmp accumulator program-counter data)))
+              ((string= instruction "nop")
+               (setq result (nop accumulator program-counter data))))
+        (setq accumulator (car result))
+        (setq program-counter (car (cdr result)))))
+    (if (= program-counter (length puzzle-input))
+        accumulator
+      'nil)))
+
+(assert (not (execute-instructions example-input))) ;; returns nil
+#+END_SRC
