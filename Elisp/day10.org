@@ -1,0 +1,221 @@
+:PROPERTIES:
+:ID:       a424b35b-b610-4667-9502-57025d33b7fc
+:END:
+#+TITLE: Advent of Code 2020 in Emacs Lisp - Day 10
+#+roam_tags: "elisp" "advent of code"
+#+hugo_tags: "elisp" "advent of code"
+#+DATE: 2021-01-01
+#+HUGO_BASE_DIR: ~/blogs/dailyemacs
+#+HUGO_FRONT_MATTER_FORMAT: yaml
+#+STARTUP: overview
+
+#+CAPTION: Photo by [[https://unsplash.com/@kristian_lovstad?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText][Kristian Løvstad]] on [[https://unsplash.com/s/photos/fireworks?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText][Unsplash]].
+[[attachment:_20210101_151332screenshot.png]]
+
+Happy new year! Let us continue with day 10 of the Advent of Code 2020 in 2021.
+This time we have a bag full of power adapters and we have to build a chain of adapters to charge our device.
+Like always, our solution is based on [[https://github.com/sophiebits/adventofcode/blob/main/2020/day10.py][SophieBits']].
+
+* Part One
+In part one we have to use every adapter. Each adapter is rated for a specific /output joltage/ and accepts an /input joltage/ 1-3 lower.
+Our device has a built-in joltage adapter rated for /3 jolts higher/ than the /highest-rated/ adapter, i.e. 12 if the highest is 9.
+The outlet has a rating of zero.
+To solve the puzzle we need to multiply the number of adapters with a 1-jolt differences by the number of 3-jolt differences.
+
+Here's the Python solution:
+#+begin_src python
+lines = [l.rstrip("\n") for l in sys.stdin]
+lines = [int(l) for l in lines]
+lines.append(0)
+lines.append(max(lines) + 3)
+lines.sort()
+ones = 0
+threes = 0
+for a, b in zip(lines, lines[1:]):
+    if b - a == 1:
+        ones += 1
+    elif b - a == 3:
+        threes += 1
+print(ones * threes)
+#+end_src
+
+Because we know that we can create a chain using all adapters we only need to sort them and count the differences.
+Before we use the real puzzle input let us start with the example.
+#+begin_src elisp :session session :exports both
+(require 'seq)
+
+(setq example-input '(16 10 15 5 1 11 7 19 6 12 4))
+
+(defun add-outlet-and-device (sequence)
+  (push 0 sequence)
+  (push (+ (seq-max sequence) 3) sequence)
+  sequence)
+
+(add-outlet-and-device example-input)
+#+end_src
+
+#+RESULTS:
+| 22 | 0 | 16 | 10 | 15 | 5 | 1 | 11 | 7 | 19 | 6 | 12 | 4 |
+
+** Counting the Joltage Differences
+In the first step we add the outlet, 0, and our device, =max + 3=, to the sequence.
+Next, we sort the list and count the differences.
+
+After sorting the example input we get:
+| 0 | 1 | 4 | 5 | 6 | 7 | 10 | 11 | 12 | 15 | 16 | 19 | 22 |
+Next, we can use =seq-mapn= like =zip= in Python to calculate the differences between two elements.
+| 1 | 3 | 1 | 1 | 1 | 3 | 1 | 1 | 3 | 1 | 3 | 3 |
+I didn't want to introduce new variables so I used =seq-count= in the next step to simply count the elements equal to one or three and then multiply them.
+In summary:
+#+begin_src elisp :session session :exports both
+(defun count-joltage-differences (sequence)
+  (setq sequence (seq-mapn (lambda (a b) (- b a)) sequence (cdr sequence)))
+  (* (seq-count (lambda (elt) (= elt 1)) sequence)
+     (seq-count (lambda (elt) (= elt 3)) sequence))
+ )
+
+(count-joltage-differences (seq-sort #'< (add-outlet-and-device example-input)))
+#+end_src
+
+#+RESULTS:
+: 35
+
+** Solving Part One
+Now, we only need to load the puzzle-input and solve part one.
+
+#+begin_src elisp :session session :exports both
+(setq puzzle-input (mapcar #'string-to-number
+                           (split-string (with-current-buffer "*scratch*" (buffer-string))
+                                         "\n" 't)))
+
+(defun solve-part-one (input)
+  (count-joltage-differences (seq-sort #'< (add-outlet-and-device input))))
+
+(solve-part-one puzzle-input) 
+#+end_src
+
+#+RESULTS:
+: 2210
+
+
+* Part Two
+You have probably guessed it. The twist is that we need to figure out the number of different combinations of adapters (we do not have to use all).
+This sounds like a dynamic programming task, so let's look at the example solution.
+
+** The Python Solution
+#+begin_src python :exports both
+def countways2(nums):
+    top = max(nums) + 3
+    nums = set(nums)
+    nums.add(top)
+    a, b, c = 0, 0, 1
+    for i in range(1, top + 1):
+        if i in nums:
+            a, b, c = b, c, a + b + c
+            print("included")
+        else:
+            a, b, c = b, c, 0
+        print(a, b, c)
+    return c
+
+
+return countways2([16, 10, 15, 5, 1, 11, 7, 19, 6, 12, 4])
+#+end_src
+
+#+RESULTS:
+: 8
+
+What is going on here? The result is correct, but why?
+In the first three lines duplicates are removed and the device joltage is added.
+Note that =nums= is not sorted.
+
+What are =a=, =b=, and =c=?
+Because we return =c= we can assume that =c= is the number of combinations, hence initialized with one.
+
+Instead of looping through the sorted list of adapters we count from 1 to =top=.
+For each number we shift the variables to the left.
+The variable =b= becomes =a=, =c= becomes =b=, and we set =c= to 0, if =i= is not an adapter, or to =a + b + c=.
+
+Our first adapter has the rating 1 and the second 4.
+If we follow the change of variables (=a=, =b=, =c=) we can observe the shifting but nothing changes because we have only one option of chaining the adapters.
+#+begin_src 
+0 0 1 ; initialization
+0 1 1 ; adapter 1
+1 1 0 ; shift
+1 0 0 ; shift
+0 0 1 ; adapter 4
+#+end_src
+Next we have the adapters 5,6,7 this means that we have three options as next adapter.
+When we track the variables we observe the following:
+#+begin_src 
+0 1 1 ; adapter 5
+1 1 2 ; adapter 6
+1 2 4 ; adapter 7
+#+end_src
+At first we have to use adapter 5, hence we have only one option, =4-5= (=c = 1=).
+But then, with adapter 6 we have two options: =4-5-6= or =4-6= (=c = 2=).
+Using adapter 7 we get four options: =4-5-6-7=, =4-5-7=, =4-6-7=, and =4-7= (=c = 4=). 
+This means we always have =2^(n-1)= options because we can only change the configuration of the inner adapters.
+But why using shifting and summing for that?
+
+We probably use three variables, =a=, =b=, and =c=, because the maximum joltage difference between adapters is three.
+Also, we have to keep track of the current number of different adapter configurations.
+That's why we probably need a sum.
+By shifting we can also store the number of combinations for the previous adapters.
+For example, =1 2 4= means the current adapter can be used in four combinations, the previous in two, and that one before that in one.
+
+If we now shift the variables again
+#+begin_src 
+1 2 4 ; adapter 7
+2 4 0
+4 0 0
+0 0 4 ; adapter 10
+#+end_src
+we can see that adapter 10 is the only adapter (=a = b = 0=) that can be used and we can use it in four (=c = 4=) different combinations.
+
+At adapter 12 we have again two options =10-11-12= and =10-12=, so we can sum up the two previous number of combinations (=c = 8 = 4 + 4=).
+This behaviour continues up to adapter 22. Neat solution!
+#+begin_src 
+0 0 4 ; adapter 10
+0 4 4 ; adapter 11
+4 4 8 ; adapter 12
+4 8 0
+8 0 0
+0 0 8 ; adapter 15
+0 8 8 ; adapter 16
+8 8 0
+8 0 0
+0 0 8 ; adapter 19
+0 8 0
+8 0 0
+0 0 8 ; adpater 22
+#+end_src
+
+Let's write it in Elisp!
+#+begin_src elisp :session session :exports both
+(defun solve-part-two (input)
+  (let ((top (+ (seq-max input) 3)) (a 0) (b 0) (c 1) (i 1) temp)
+    (push top input)
+    (setq input (delete-duplicates input))
+    (while (<= i top)
+      (if (member i input)
+          (setq temp (+ a b c))
+        (setq temp 0))
+      (setq a b
+            b c
+            c temp
+            i (1+ i))
+      )
+    c))
+
+(assert (= (solve-part-two example-input) 8))
+(solve-part-two puzzle-input)
+#+end_src
+
+#+RESULTS:
+: 7086739046912
+
+
+  
+
+
